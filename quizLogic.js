@@ -56,8 +56,9 @@ export async function processAnswer(callbackQuery, env) {
   if (data.startsWith("quiz_")) {
     const quizId = data.replace("quiz_", "");
     const quizzes = await loadQuizData(env);
+    console.log('processAnswer: loaded quizzes:', quizzes); // Для отладки
     if (!quizzes[quizId]) {
-      await sendMessage(chatId, "Ошибка: выбранная тема квиза недоступна. " + JSON.stringify(quizzes)); // Для отладки
+      await sendMessage(chatId, "Ошибка: выбранная тема квиза недоступна. " + JSON.stringify(quizzes));
       await answerCallback(callbackId);
       return new Response('OK', { status: 200 });
     }
