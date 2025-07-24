@@ -1,6 +1,6 @@
 import { sendMessage, sendPhoto, answerCallback } from './telegramApi.js';
 import { loadQuizData, loadQuizNames } from './dataLoader.js';
-import { userData } from './main.js';
+import { userData } from './main.js'; // добавлено
 
 export async function startQuiz(chatId, env) {
   const quizNames = await loadQuizNames();
@@ -9,7 +9,7 @@ export async function startQuiz(chatId, env) {
       { text: quizNames[quizId], callback_data: `quiz_${quizId}` }
     ])
   };
-  await sendMessage(chatId, "Выбери тему квиза, которую хочешь пройти.", keyboard);
+  await sendMessage(chatId, "Добро пожаловать! Выберите тему квиза:", keyboard);
   return new Response('OK', { status: 200 });
 }
 
@@ -37,10 +37,9 @@ export async function processNameInput(message, env) {
     state: 'quiz_started',
     currentQuestion: 0,
     score: 0,
-    answers: [],
-    quizStartedAt: Date.now() // время начала квиза
+    answers: []
   });
-  await sendQuestion(chatId, userData.get(userId), user.quizId, env, userId);
+  await sendQuestion(chatId, userData.get(userId), user.quizId, env);
   return new Response('OK', { status: 200 });
 }
 
@@ -48,9 +47,8 @@ export async function processAnswer(callbackQuery, env) {
   const { id: callbackId, from: { id: userId }, data, message } = callbackQuery;
   const chatId = message.chat.id;
 
-  const user = userData.get(userId);
-  if (!user || user.state !== 'quiz_started') {
-    await sendMessage(chatId, "Пожалуйста, начните квиз заново с помощью /start.");
+  if (data === "restart_quiz") {
+    await startQuiz(chatId, env);
     await answerCallback(callbackId);
     return new Response('OK', { status: 200 });
   }
@@ -58,68 +56,34 @@ export async function processAnswer(callbackQuery, env) {
   if (data.startsWith("quiz_")) {
     const quizId = data.replace("quiz_", "");
     const quizzes = await loadQuizData(env);
+    console.log('processAnswer: loaded quizzes:', quizzes); // Для отладки
     if (!quizzes[quizId]) {
       await sendMessage(chatId, "Ошибка: выбранная тема квиза недоступна. " + JSON.stringify(quizzes));
       await answerCallback(callbackId);
       return new Response('OK', { status: 200 });
     }
-    // Сохраняем quizId и состояние, остальные поля не трогаем
-    const prev = userData.get(userId) || {};
     userData.set(userId, {
-      ...prev,
       quizId,
-      state: 'awaiting_name'
+      state: 'awaiting_name',
+      username: callbackQuery.from.username || ''
     });
     await sendMessage(chatId, "Пожалуйста, укажите ваше имя и фамилию через пробел (например: Иван Иванов).");
     await answerCallback(callbackId);
     return new Response('OK', { status: 200 });
-  }
-
-  const quizzes = await loadQuizData(env);
-  const quizId = user.quizId;
-  const currentQuestion = user.currentQuestion;
-  const questionData = quizzes[quizId]?.[currentQuestion];
-
-  if (!questionData) {
-    const timestamp = Date.now();
-    const score = user.score;
-    const total = quizzes[quizId].length;
-    const quizNames = await loadQuizNames();
-    const quizName = quizNames[quizId] || quizId;
-    const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})\nТема: ${quizName}\nРезультат: ${score} из ${total}\nДата и время: ${new Date(timestamp).toISOString()}`;
-    await sendMessage('-1002831579277', messageText);
-    await saveQuizResult(userId, quizId, user, timestamp, env);
-    const keyboard = {
-      inline_keyboard: [
-        [{ text: "Попробовать снова?", callback_data: "restart_quiz" }]
-      ]
-    };
-    await sendMessage(chatId, `Квиз завершен! Ваш результат: ${score}/${total}`, keyboard);
-    userData.delete(userId);
-    await answerCallback(callbackId);
-    return new Response('OK', { status: 200 });
-  }
-
-  const answerIndex = parseInt(data.split("_")[1]);
-  if (isNaN(answerIndex)) {
-    await sendMessage(chatId, "Неверный формат ответа, попробуйте снова!");
-  } else {
-    user.answers.push({
-      questionIndex: currentQuestion,
-      selectedAnswerIndex: answerIndex,
-      correctAnswerIndex: questionData.correct,
-      isCorrect: answerIndex === questionData.correct
-    });
-    if (answerIndex === questionData.correct) {
-      await sendMessage(chatId, "Правильно!");
-      user.score += 1;
-    } else {
-      await sendMessage(chatId, "Неправильно!");
+  } else if (data.startsWith("answer_")) {
+    const user = userData.get(userId);
+    if (!user || user.state !== 'quiz_started') {
+      await sendMessage(chatId, "Пожалуйста, начните квиз заново с помощью /start.");
+      await answerCallback(callbackId);
+      return new Response('OK', { status: 200 });
     }
-    user.currentQuestion += 1;
-    if (user.currentQuestion < quizzes[quizId].length) {
-      await sendQuestion(chatId, user, quizId, env, userId);
-    } else {
+
+    const quizzes = await loadQuizData(env);
+    const quizId = user.quizId;
+    const currentQuestion = user.currentQuestion;
+    const questionData = quizzes[quizId]?.[currentQuestion];
+
+    if (!questionData) {
       const timestamp = Date.now();
       const score = user.score;
       const total = quizzes[quizId].length;
@@ -135,6 +99,48 @@ export async function processAnswer(callbackQuery, env) {
       };
       await sendMessage(chatId, `Квиз завершен! Ваш результат: ${score}/${total}`, keyboard);
       userData.delete(userId);
+      await answerCallback(callbackId);
+      return new Response('OK', { status: 200 });
+    }
+
+    const answerIndex = parseInt(data.split("_")[1]);
+    if (isNaN(answerIndex)) {
+      await sendMessage(chatId, "Неверный формат ответа, попробуйте снова!");
+    } else {
+      user.answers.push({
+        questionIndex: currentQuestion,
+        selectedAnswerIndex: answerIndex,
+        correctAnswerIndex: questionData.correct,
+        isCorrect: answerIndex === questionData.correct
+      });
+      if (answerIndex === questionData.correct) {
+        user.score += 1;
+        await sendMessage(chatId, "Правильно!");
+      } else {
+        const correctOption = questionData.options[questionData.correct];
+        //await sendMessage(chatId, `Неправильно! Правильный ответ: ${correctOption}`);
+        await sendMessage(chatId, `Неправильно!`);
+      }
+      user.currentQuestion += 1;
+      if (user.currentQuestion < quizzes[quizId].length) {
+        await sendQuestion(chatId, user, quizId, env);
+      } else {
+        const timestamp = Date.now();
+        const score = user.score;
+        const total = quizzes[quizId].length;
+        const quizNames = await loadQuizNames();
+        const quizName = quizNames[quizId] || quizId;
+        const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})\nТема: ${quizName}\nРезультат: ${score} из ${total}\nДата и время: ${new Date(timestamp).toISOString()}`;
+        await sendMessage('-1002831579277', messageText);
+        await saveQuizResult(userId, quizId, user, timestamp, env);
+        const keyboard = {
+          inline_keyboard: [
+            [{ text: "Попробовать снова?", callback_data: "restart_quiz" }]
+          ]
+        };
+        await sendMessage(chatId, `Квиз завершен! Ваш результат: ${score}/${total}`, keyboard);
+        userData.delete(userId);
+      }
     }
   }
 
@@ -142,7 +148,7 @@ export async function processAnswer(callbackQuery, env) {
   return new Response('OK', { status: 200 });
 }
 
-async function sendQuestion(chatId, user, quizId, env, userId) {
+async function sendQuestion(chatId, user, quizId, env) {
   const quizzes = await loadQuizData(env);
   const currentQuestion = user.currentQuestion;
   const questionData = quizzes[quizId]?.[currentQuestion];
@@ -172,7 +178,6 @@ async function sendQuestion(chatId, user, quizId, env, userId) {
 
 async function saveQuizResult(userId, quizId, user, timestamp, env) {
   const kvKey = `${userId}_${timestamp}`;
-  const durationMs = user.quizStartedAt ? (timestamp - user.quizStartedAt) : null;
   const result = {
     telegramId: userId,
     username: user.username || 'Unknown',
@@ -182,13 +187,10 @@ async function saveQuizResult(userId, quizId, user, timestamp, env) {
     answers: user.answers,
     score: user.score,
     totalQuestions: (await loadQuizData(env))[quizId].length,
-    quizStartedAt: user.quizStartedAt ? new Date(user.quizStartedAt).toISOString() : null,
-    finishedAt: new Date(timestamp).toISOString(),
-    durationMs,
     timestamp: new Date(timestamp).toISOString()
   };
   try {
-    await env.kv_results.put(kvKey, JSON.stringify(result));
+    await env.kv_results.put(kvKey, JSON.stringify(result)); // изменено на kv_results
   } catch (error) {
     console.log('Error saving to KV:', error.message);
   }
