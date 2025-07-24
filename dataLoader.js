@@ -1,4 +1,4 @@
-export async function loadQuizData() {
+export async function loadQuizData(env) {
   try {
     const quizzes = {};
     const quizFiles = ['breakfast.json', 'salads.json'];
@@ -13,6 +13,7 @@ export async function loadQuizData() {
       const quizId = file.replace('.json', '');
       quizzes[quizId] = data;
     }
+    console.log('Loaded quizzes:', quizzes); // Для отладки
     return quizzes;
   } catch (error) {
     console.log('Fetch error in loadQuizData:', error.message);

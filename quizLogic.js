@@ -57,7 +57,7 @@ export async function processAnswer(callbackQuery, env) {
     const quizId = data.replace("quiz_", "");
     const quizzes = await loadQuizData(env);
     if (!quizzes[quizId]) {
-      await sendMessage(chatId, "Ошибка: выбранная тема квиза недоступна.");
+      await sendMessage(chatId, "Ошибка: выбранная тема квиза недоступна. " + JSON.stringify(quizzes)); // Для отладки
       await answerCallback(callbackId);
       return new Response('OK', { status: 200 });
     }
