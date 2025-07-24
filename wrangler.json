@@ -1,5 +1,8 @@
 {
   "name": "quizkk",
   "compatibility_date": "2025-07-24",
-  "main": "worker.js"
+  "main": "main.js",
+  "kv_namespaces": [
+    { "binding": "kv_quiz", "id": "YOUR_KV_ID" }
+  ]
 }
