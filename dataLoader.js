@@ -4,9 +4,13 @@ export async function loadQuizData(env) {
     const quizFiles = ['breakfast.json', 'salads.json'];
 
     for (const file of quizFiles) {
-      const response = await env.ASSETS.fetch(`quizzes/${file}`);
-      if (!response.ok) {
-        console.log(`Error loading quiz data for ${file}:`, await response.text());
+      // Попробуйте оба варианта пути
+      let response = await env.ASSETS.fetch(`/quizzes/${file}`);
+      if (!response || !response.ok) {
+        response = await env.ASSETS.fetch(`quizzes/${file}`);
+      }
+      if (!response || !response.ok) {
+        console.log(`Error loading quiz data for ${file}:`, response ? await response.text() : 'No response');
         continue;
       }
       const data = await response.json();

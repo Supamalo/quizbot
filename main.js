@@ -9,7 +9,7 @@ async function handleRequest(request, env) {
     } else if (message && message.text && userData.has(message.from.id) && userData.get(message.from.id).state === 'awaiting_name') {
       return await processNameInput(message, env);
     } else if (callback_query && callback_query.data) {
-      return await processAnswer(callbackQuery, env); // Исправлено callback_query
+      return await processAnswer(callback_query, env); // Исправлено
     }
   }
   return new Response('OK', { status: 200 });

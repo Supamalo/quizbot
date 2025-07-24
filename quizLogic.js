@@ -1,5 +1,6 @@
 import { sendMessage, sendPhoto, answerCallback } from './telegramApi.js';
 import { loadQuizData, loadQuizNames } from './dataLoader.js';
+import { userData } from './main.js'; // добавлено
 
 export async function startQuiz(chatId, env) {
   const quizNames = await loadQuizNames();
@@ -38,7 +39,6 @@ export async function processNameInput(message, env) {
     score: 0,
     answers: []
   });
-
   await sendQuestion(chatId, userData.get(userId), user.quizId, env);
   return new Response('OK', { status: 200 });
 }
