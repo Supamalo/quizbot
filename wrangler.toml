@@ -4,6 +4,10 @@ compatibility_date = "2025-07-24"
 
 [[kv_namespaces]]
 binding = "kv_quiz"
+id = "ce68783714d2458cb11e8817cc2d3449"
+
+[[kv_namespaces]]
+binding = "kv_results"
 id = "b64b10c45bf3400a8b808adb0fe2b02d"
 
 [observability.logs]

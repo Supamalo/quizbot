@@ -189,7 +189,7 @@ async function saveQuizResult(userId, quizId, user, timestamp, env) {
     timestamp: new Date(timestamp).toISOString()
   };
   try {
-    await env.kv_quiz.put(kvKey, JSON.stringify(result));
+    await env.kv_results.put(kvKey, JSON.stringify(result)); // изменено на kv_results
   } catch (error) {
     console.log('Error saving to KV:', error.message);
   }
