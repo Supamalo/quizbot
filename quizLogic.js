@@ -189,7 +189,7 @@ async function sendQuestion(chatId, user, quizId, env) {
   // Запустить таймеры только если не активны
   if (!user.timerActive) {
     user.timerActive = true;
-    const timerUserId = user.telegramId || user.id || chatId;
+    const timerUserId = user.id ?? user.telegramId ?? chatId; // используем user.id (Telegram ID)
     // Напоминание через 30 секунд
     const reminder = setTimeout(async () => {
       await sendMessage(chatId, "Осталось 30 секунд на ответ!");
@@ -236,7 +236,7 @@ ${reason === "timeout" ? "Превышено ожидание" : ""}`;
     ]
   };
   await sendMessage(chatId, `Квиз завершен! Ваш результат: ${score}/${total}${reason === "timeout" ? "\nВремя на ответ истекло." : ""}`, keyboard); // сообщение пользователю
-  await saveQuizResult(userId, quizId, { ...user, answers, score }, timestamp, env);
+  await saveQuizResult(userId, quizId, { ...user, answers, score }, timestamp, env); // результат в KV
   userData.delete(userId);
   if (questionTimers.has(userId)) {
     clearTimeout(questionTimers.get(userId).timeout);
