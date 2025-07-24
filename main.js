@@ -1,9 +1,5 @@
 import { startQuiz, processAnswer, processNameInput } from './quizLogic.js';
 
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request));
-});
-
 async function handleRequest(request) {
   if (request.method === 'POST') {
     const data = await request.json();
@@ -18,5 +14,9 @@ async function handleRequest(request) {
   }
   return new Response('OK', { status: 200 });
 }
+
+export default {
+  fetch: handleRequest,
+};
 
 export const userData = new Map();
