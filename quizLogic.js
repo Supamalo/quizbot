@@ -41,7 +41,7 @@ export async function processNameInput(message, env) {
     currentQuestion: 0,
     score: 0,
     answers: [],
-    timerActive: false
+    questionStart: Date.now() // время начала вопроса
   });
   await sendQuestion(chatId, userData.get(userId), user.quizId, env, userId);
   return new Response('OK', { status: 200 });
@@ -51,49 +51,67 @@ export async function processAnswer(callbackQuery, env) {
   const { id: callbackId, from: { id: userId }, data, message } = callbackQuery;
   const chatId = message.chat.id;
 
-  // Сбросить таймер при ответе
-  if (questionTimers.has(userId)) {
-    clearTimeout(questionTimers.get(userId).timeout);
-    clearTimeout(questionTimers.get(userId).reminder);
-    questionTimers.delete(userId);
-  }
-
-  if (data === "restart_quiz") {
-    await startQuiz(chatId, env);
+  const user = userData.get(userId);
+  if (!user || user.state !== 'quiz_started') {
+    await sendMessage(chatId, "Пожалуйста, начните квиз заново с помощью /start.");
     await answerCallback(callbackId);
     return new Response('OK', { status: 200 });
   }
 
-  if (data.startsWith("quiz_")) {
-    const quizId = data.replace("quiz_", "");
-    const quizzes = await loadQuizData(env);
-    if (!quizzes[quizId]) {
-      await sendMessage(chatId, "Ошибка: выбранная тема квиза недоступна. " + JSON.stringify(quizzes));
-      await answerCallback(callbackId);
-      return new Response('OK', { status: 200 });
-    }
-    userData.set(userId, {
-      quizId,
-      state: 'awaiting_name',
-      username: callbackQuery.from.username || ''
+  const quizzes = await loadQuizData(env);
+  const quizId = user.quizId;
+  const currentQuestion = user.currentQuestion;
+  const questionData = quizzes[quizId]?.[currentQuestion];
+
+  // Проверка таймаута
+  const now = Date.now();
+  if (user.questionStart && now - user.questionStart > 60000) {
+    await finishQuizTimeout(userId, chatId, env, "timeout");
+    await answerCallback(callbackId);
+    return new Response('OK', { status: 200 });
+  }
+
+  if (!questionData) {
+    const timestamp = Date.now();
+    const score = user.score;
+    const total = quizzes[quizId].length;
+    const quizNames = await loadQuizNames();
+    const quizName = quizNames[quizId] || quizId;
+    const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})\nТема: ${quizName}\nРезультат: ${score} из ${total}\nДата и время: ${new Date(timestamp).toISOString()}`;
+    await sendMessage('-1002831579277', messageText);
+    await saveQuizResult(userId, quizId, user, timestamp, env);
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: "Попробовать снова?", callback_data: "restart_quiz" }]
+      ]
+    };
+    await sendMessage(chatId, `Квиз завершен! Ваш результат: ${score}/${total}`, keyboard);
+    userData.delete(userId);
+    await answerCallback(callbackId);
+    return new Response('OK', { status: 200 });
+  }
+
+  const answerIndex = parseInt(data.split("_")[1]);
+  if (isNaN(answerIndex)) {
+    await sendMessage(chatId, "Неверный формат ответа, попробуйте снова!");
+  } else {
+    user.answers.push({
+      questionIndex: currentQuestion,
+      selectedAnswerIndex: answerIndex,
+      correctAnswerIndex: questionData.correct,
+      isCorrect: answerIndex === questionData.correct
     });
-    await sendMessage(chatId, "Пожалуйста, укажите ваше имя и фамилию через пробел (например: Иван Иванов).");
-    await answerCallback(callbackId);
-    return new Response('OK', { status: 200 });
-  } else if (data.startsWith("answer_")) {
-    const user = userData.get(userId);
-    if (!user || user.state !== 'quiz_started') {
-      await sendMessage(chatId, "Пожалуйста, начните квиз заново с помощью /start.");
-      await answerCallback(callbackId);
-      return new Response('OK', { status: 200 });
+    if (answerIndex === questionData.correct) {
+      await sendMessage(chatId, "Правильно!");
+      user.score += 1;
+    } else {
+      await sendMessage(chatId, "Неправильно!");
     }
-
-    const quizzes = await loadQuizData(env);
-    const quizId = user.quizId;
-    const currentQuestion = user.currentQuestion;
-    const questionData = quizzes[quizId]?.[currentQuestion];
-
-    if (!questionData) {
+    user.currentQuestion += 1;
+    user.questionStart = Date.now(); // обновить время для следующего вопроса
+    if (user.currentQuestion < quizzes[quizId].length) {
+      await sendQuestion(chatId, user, quizId, env, userId);
+    } else {
       const timestamp = Date.now();
       const score = user.score;
       const total = quizzes[quizId].length;
@@ -109,46 +127,6 @@ export async function processAnswer(callbackQuery, env) {
       };
       await sendMessage(chatId, `Квиз завершен! Ваш результат: ${score}/${total}`, keyboard);
       userData.delete(userId);
-      await answerCallback(callbackId);
-      return new Response('OK', { status: 200 });
-    }
-
-    const answerIndex = parseInt(data.split("_")[1]);
-    if (isNaN(answerIndex)) {
-      await sendMessage(chatId, "Неверный формат ответа, попробуйте снова!");
-    } else {
-      user.answers.push({
-        questionIndex: currentQuestion,
-        selectedAnswerIndex: answerIndex,
-        correctAnswerIndex: questionData.correct,
-        isCorrect: answerIndex === questionData.correct
-      });
-      if (answerIndex === questionData.correct) {
-        await sendMessage(chatId, "Правильно!");
-        user.score += 1;
-      } else {
-        await sendMessage(chatId, "Неправильно!");
-      }
-      user.currentQuestion += 1;
-      if (user.currentQuestion < quizzes[quizId].length) {
-        await sendQuestion(chatId, user, quizId, env, userId);
-      } else {
-        const timestamp = Date.now();
-        const score = user.score;
-        const total = quizzes[quizId].length;
-        const quizNames = await loadQuizNames();
-        const quizName = quizNames[quizId] || quizId;
-        const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})\nТема: ${quizName}\nРезультат: ${score} из ${total}\nДата и время: ${new Date(timestamp).toISOString()}`;
-        await sendMessage('-1002831579277', messageText);
-        await saveQuizResult(userId, quizId, user, timestamp, env);
-        const keyboard = {
-          inline_keyboard: [
-            [{ text: "Попробовать снова?", callback_data: "restart_quiz" }]
-          ]
-        };
-        await sendMessage(chatId, `Квиз завершен! Ваш результат: ${score}/${total}`, keyboard);
-        userData.delete(userId);
-      }
     }
   }
 
@@ -184,19 +162,7 @@ async function sendQuestion(chatId, user, quizId, env, userId) {
     await sendMessage(chatId, messageText, keyboard);
   }
 
-  // Запустить таймеры только если не активны
-  if (!user.timerActive) {
-    user.timerActive = true;
-    // Напоминание через 30 секунд
-    const reminder = setTimeout(() => {
-      sendMessage(chatId, "Осталось 30 секунд на ответ!");
-    }, 30000);
-    // Завершение квиза через 60 секунд
-    const timeout = setTimeout(() => {
-      finishQuizTimeout(userId, chatId, env, "timeout");
-    }, 60000);
-    questionTimers.set(userId, { timeout, reminder });
-  }
+  user.questionStart = Date.now(); // фиксируем время начала вопроса
 }
 
 async function finishQuizTimeout(userId, chatId, env, reason = "timeout") {
@@ -234,11 +200,6 @@ ${reason === "timeout" ? "Превышено ожидание" : ""}`;
   await sendMessage(chatId, `Квиз завершен! Ваш результат: ${score}/${total}${reason === "timeout" ? "\nВремя на ответ истекло." : ""}`, keyboard); // сообщение пользователю
   await saveQuizResult(userId, quizId, { ...user, answers, score }, timestamp, env); // результат в KV
   userData.delete(userId);
-  if (questionTimers.has(userId)) {
-    clearTimeout(questionTimers.get(userId).timeout);
-    clearTimeout(questionTimers.get(userId).reminder);
-    questionTimers.delete(userId);
-  }
 }
 
 async function saveQuizResult(userId, quizId, user, timestamp, env) {
