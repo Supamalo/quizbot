@@ -41,9 +41,9 @@ export async function processNameInput(message, env) {
     currentQuestion: 0,
     score: 0,
     answers: [],
-    timerActive: false // для контроля таймера
+    timerActive: false
   });
-  await sendQuestion(chatId, userData.get(userId), user.quizId, env);
+  await sendQuestion(chatId, userData.get(userId), user.quizId, env, userId);
   return new Response('OK', { status: 200 });
 }
 
@@ -67,7 +67,6 @@ export async function processAnswer(callbackQuery, env) {
   if (data.startsWith("quiz_")) {
     const quizId = data.replace("quiz_", "");
     const quizzes = await loadQuizData(env);
-    console.log('processAnswer: loaded quizzes:', quizzes); // Для отладки
     if (!quizzes[quizId]) {
       await sendMessage(chatId, "Ошибка: выбранная тема квиза недоступна. " + JSON.stringify(quizzes));
       await answerCallback(callbackId);
@@ -125,16 +124,14 @@ export async function processAnswer(callbackQuery, env) {
         isCorrect: answerIndex === questionData.correct
       });
       if (answerIndex === questionData.correct) {
-        user.score += 1;
         await sendMessage(chatId, "Правильно!");
+        user.score += 1;
       } else {
-        const correctOption = questionData.options[questionData.correct];
-        //await sendMessage(chatId, `Неправильно! Правильный ответ: ${correctOption}`);
-        await sendMessage(chatId, `Неправильно!`);
+        await sendMessage(chatId, "Неправильно!");
       }
       user.currentQuestion += 1;
       if (user.currentQuestion < quizzes[quizId].length) {
-        await sendQuestion(chatId, user, quizId, env);
+        await sendQuestion(chatId, user, quizId, env, userId);
       } else {
         const timestamp = Date.now();
         const score = user.score;
@@ -159,7 +156,8 @@ export async function processAnswer(callbackQuery, env) {
   return new Response('OK', { status: 200 });
 }
 
-async function sendQuestion(chatId, user, quizId, env) {
+// sendQuestion теперь принимает userId для таймеров
+async function sendQuestion(chatId, user, quizId, env, userId) {
   const quizzes = await loadQuizData(env);
   const currentQuestion = user.currentQuestion;
   const questionData = quizzes[quizId]?.[currentQuestion];
@@ -189,20 +187,18 @@ async function sendQuestion(chatId, user, quizId, env) {
   // Запустить таймеры только если не активны
   if (!user.timerActive) {
     user.timerActive = true;
-    const timerUserId = user.id ?? user.telegramId ?? chatId; // используем user.id (Telegram ID)
     // Напоминание через 30 секунд
-    const reminder = setTimeout(async () => {
-      await sendMessage(chatId, "Осталось 30 секунд на ответ!");
+    const reminder = setTimeout(() => {
+      sendMessage(chatId, "Осталось 30 секунд на ответ!");
     }, 30000);
     // Завершение квиза через 60 секунд
-    const timeout = setTimeout(async () => {
-      await finishQuizTimeout(timerUserId, chatId, env, "timeout");
+    const timeout = setTimeout(() => {
+      finishQuizTimeout(userId, chatId, env, "timeout");
     }, 60000);
-    questionTimers.set(timerUserId, { timeout, reminder });
+    questionTimers.set(userId, { timeout, reminder });
   }
 }
 
-// Вспомогательная функция для завершения квиза по таймауту
 async function finishQuizTimeout(userId, chatId, env, reason = "timeout") {
   const user = userData.get(userId);
   if (!user || user.state !== 'quiz_started') return;
@@ -259,7 +255,7 @@ async function saveQuizResult(userId, quizId, user, timestamp, env) {
     timestamp: new Date(timestamp).toISOString()
   };
   try {
-    await env.kv_results.put(kvKey, JSON.stringify(result)); // изменено на kv_results
+    await env.kv_results.put(kvKey, JSON.stringify(result));
   } catch (error) {
     console.log('Error saving to KV:', error.message);
   }
