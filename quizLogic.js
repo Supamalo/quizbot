@@ -2,9 +2,6 @@ import { sendMessage, sendPhoto, answerCallback } from './telegramApi.js';
 import { loadQuizData, loadQuizNames } from './dataLoader.js';
 import { userData } from './main.js';
 
-// Таймеры для каждого пользователя
-const questionTimers = new Map();
-
 export async function startQuiz(chatId, env) {
   const quizNames = await loadQuizNames();
   const keyboard = {
@@ -12,7 +9,7 @@ export async function startQuiz(chatId, env) {
       { text: quizNames[quizId], callback_data: `quiz_${quizId}` }
     ])
   };
-  await sendMessage(chatId, "Выбери тему квиза, которую хочешь пройти.\nУ тебя будет 1 минута на каждый ответ", keyboard);
+  await sendMessage(chatId, "Выбери тему квиза, которую хочешь пройти.", keyboard);
   return new Response('OK', { status: 200 });
 }
 
@@ -41,7 +38,7 @@ export async function processNameInput(message, env) {
     currentQuestion: 0,
     score: 0,
     answers: [],
-    questionStart: Date.now() // время начала вопроса
+    quizStartedAt: Date.now() // время начала квиза
   });
   await sendQuestion(chatId, userData.get(userId), user.quizId, env, userId);
   return new Response('OK', { status: 200 });
@@ -62,14 +59,6 @@ export async function processAnswer(callbackQuery, env) {
   const quizId = user.quizId;
   const currentQuestion = user.currentQuestion;
   const questionData = quizzes[quizId]?.[currentQuestion];
-
-  // Проверка таймаута
-  const now = Date.now();
-  if (user.questionStart && now - user.questionStart > 60000) {
-    await finishQuizTimeout(userId, chatId, env, "timeout");
-    await answerCallback(callbackId);
-    return new Response('OK', { status: 200 });
-  }
 
   if (!questionData) {
     const timestamp = Date.now();
@@ -108,7 +97,6 @@ export async function processAnswer(callbackQuery, env) {
       await sendMessage(chatId, "Неправильно!");
     }
     user.currentQuestion += 1;
-    user.questionStart = Date.now(); // обновить время для следующего вопроса
     if (user.currentQuestion < quizzes[quizId].length) {
       await sendQuestion(chatId, user, quizId, env, userId);
     } else {
@@ -134,7 +122,6 @@ export async function processAnswer(callbackQuery, env) {
   return new Response('OK', { status: 200 });
 }
 
-// sendQuestion теперь принимает userId для таймеров
 async function sendQuestion(chatId, user, quizId, env, userId) {
   const quizzes = await loadQuizData(env);
   const currentQuestion = user.currentQuestion;
@@ -161,49 +148,11 @@ async function sendQuestion(chatId, user, quizId, env, userId) {
   } else {
     await sendMessage(chatId, messageText, keyboard);
   }
-
-  user.questionStart = Date.now(); // фиксируем время начала вопроса
-}
-
-async function finishQuizTimeout(userId, chatId, env, reason = "timeout") {
-  const user = userData.get(userId);
-  if (!user || user.state !== 'quiz_started') return;
-  const quizzes = await loadQuizData(env);
-  const quizId = user.quizId;
-  const total = quizzes[quizId].length;
-  const timestamp = Date.now();
-  const quizNames = await loadQuizNames();
-  const quizName = quizNames[quizId] || quizId;
-
-  // Заполнить null для неотвеченных вопросов
-  const answers = [...user.answers];
-  for (let i = user.currentQuestion; i < total; i++) {
-    answers.push({
-      questionIndex: i,
-      selectedAnswerIndex: null,
-      correctAnswerIndex: quizzes[quizId][i].correct,
-      isCorrect: false
-    });
-  }
-  const score = user.score;
-  const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})
-Тема: ${quizName}
-Результат: ${score} из ${total}
-Дата и время: ${new Date(timestamp).toISOString()}
-${reason === "timeout" ? "Превышено ожидание" : ""}`;
-  await sendMessage('-1002831579277', messageText); // сообщение в канал
-  const keyboard = {
-    inline_keyboard: [
-      [{ text: "Попробовать снова?", callback_data: "restart_quiz" }]
-    ]
-  };
-  await sendMessage(chatId, `Квиз завершен! Ваш результат: ${score}/${total}${reason === "timeout" ? "\nВремя на ответ истекло." : ""}`, keyboard); // сообщение пользователю
-  await saveQuizResult(userId, quizId, { ...user, answers, score }, timestamp, env); // результат в KV
-  userData.delete(userId);
 }
 
 async function saveQuizResult(userId, quizId, user, timestamp, env) {
   const kvKey = `${userId}_${timestamp}`;
+  const durationMs = user.quizStartedAt ? (timestamp - user.quizStartedAt) : null;
   const result = {
     telegramId: userId,
     username: user.username || 'Unknown',
@@ -213,6 +162,9 @@ async function saveQuizResult(userId, quizId, user, timestamp, env) {
     answers: user.answers,
     score: user.score,
     totalQuestions: (await loadQuizData(env))[quizId].length,
+    quizStartedAt: user.quizStartedAt ? new Date(user.quizStartedAt).toISOString() : null,
+    finishedAt: new Date(timestamp).toISOString(),
+    durationMs,
     timestamp: new Date(timestamp).toISOString()
   };
   try {
