@@ -55,6 +55,26 @@ export async function processAnswer(callbackQuery, env) {
     return new Response('OK', { status: 200 });
   }
 
+  if (data.startsWith("quiz_")) {
+    const quizId = data.replace("quiz_", "");
+    const quizzes = await loadQuizData(env);
+    if (!quizzes[quizId]) {
+      await sendMessage(chatId, "Ошибка: выбранная тема квиза недоступна. " + JSON.stringify(quizzes));
+      await answerCallback(callbackId);
+      return new Response('OK', { status: 200 });
+    }
+    // Сохраняем quizId и состояние, остальные поля не трогаем
+    const prev = userData.get(userId) || {};
+    userData.set(userId, {
+      ...prev,
+      quizId,
+      state: 'awaiting_name'
+    });
+    await sendMessage(chatId, "Пожалуйста, укажите ваше имя и фамилию через пробел (например: Иван Иванов).");
+    await answerCallback(callbackId);
+    return new Response('OK', { status: 200 });
+  }
+
   const quizzes = await loadQuizData(env);
   const quizId = user.quizId;
   const currentQuestion = user.currentQuestion;
