@@ -1,12 +1,20 @@
 export async function loadQuizData() {
   try {
-    const response = await fetch('/quizzes/breakfast.json');
-    if (!response.ok) {
-      console.log('Error loading quiz data:', await response.text());
-      return {};
+    const quizzes = {};
+    const quizFiles = ['breakfast.json', 'salads.json'];
+    
+    for (const file of quizFiles) {
+      const response = await fetch(`/quizzes/${file}`);
+      if (!response.ok) {
+        console.log(`Error loading quiz data for ${file}:`, await response.text());
+        continue;
+      }
+      const data = await response.json();
+      const quizId = file.replace('.json', '');
+      quizzes[quizId] = data;
     }
-    const data = await response.json();
-    return { breakfast: data };
+    
+    return quizzes;
   } catch (error) {
     console.log('Fetch error in loadQuizData:', error.message);
     return {};
@@ -14,5 +22,8 @@ export async function loadQuizData() {
 }
 
 export async function loadQuizNames() {
-  return { breakfast: "Завтраки" };
+  return {
+    breakfast: "Завтраки",
+    salads: "Салаты и закуски"
+  };
 }
