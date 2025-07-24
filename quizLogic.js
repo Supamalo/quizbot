@@ -1,7 +1,7 @@
 import { sendMessage, sendPhoto, answerCallback } from './telegramApi.js';
 import { loadQuizData, loadQuizNames } from './dataLoader.js';
 
-export async function startQuiz(chatId) {
+export async function startQuiz(chatId, env) {
   const quizNames = await loadQuizNames();
   const keyboard = {
     inline_keyboard: Object.keys(quizNames).map(quizId => [
@@ -12,7 +12,7 @@ export async function startQuiz(chatId) {
   return new Response('OK', { status: 200 });
 }
 
-export async function processNameInput(message) {
+export async function processNameInput(message, env) {
   const { from: { id: userId }, text, chat: { id: chatId } } = message;
   const user = userData.get(userId);
   if (!user || user.state !== 'awaiting_name') {
@@ -39,23 +39,23 @@ export async function processNameInput(message) {
     answers: []
   });
 
-  await sendQuestion(chatId, userData.get(userId), user.quizId);
+  await sendQuestion(chatId, userData.get(userId), user.quizId, env);
   return new Response('OK', { status: 200 });
 }
 
-export async function processAnswer(callbackQuery) {
+export async function processAnswer(callbackQuery, env) {
   const { id: callbackId, from: { id: userId }, data, message } = callbackQuery;
   const chatId = message.chat.id;
 
   if (data === "restart_quiz") {
-    await startQuiz(chatId);
+    await startQuiz(chatId, env);
     await answerCallback(callbackId);
     return new Response('OK', { status: 200 });
   }
 
   if (data.startsWith("quiz_")) {
     const quizId = data.replace("quiz_", "");
-    const quizzes = await loadQuizData();
+    const quizzes = await loadQuizData(env);
     if (!quizzes[quizId]) {
       await sendMessage(chatId, "Ошибка: выбранная тема квиза недоступна.");
       await answerCallback(callbackId);
@@ -77,7 +77,7 @@ export async function processAnswer(callbackQuery) {
       return new Response('OK', { status: 200 });
     }
 
-    const quizzes = await loadQuizData();
+    const quizzes = await loadQuizData(env);
     const quizId = user.quizId;
     const currentQuestion = user.currentQuestion;
     const questionData = quizzes[quizId]?.[currentQuestion];
@@ -90,7 +90,7 @@ export async function processAnswer(callbackQuery) {
       const quizName = quizNames[quizId] || quizId;
       const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})\nТема: ${quizName}\nРезультат: ${score} из ${total}\nДата и время: ${new Date(timestamp).toISOString()}`;
       await sendMessage('-1002831579277', messageText);
-      await saveQuizResult(userId, quizId, user, timestamp);
+      await saveQuizResult(userId, quizId, user, timestamp, env);
       const keyboard = {
         inline_keyboard: [
           [{ text: "Попробовать снова?", callback_data: "restart_quiz" }]
@@ -121,7 +121,7 @@ export async function processAnswer(callbackQuery) {
       }
       user.currentQuestion += 1;
       if (user.currentQuestion < quizzes[quizId].length) {
-        await sendQuestion(chatId, user, quizId);
+        await sendQuestion(chatId, user, quizId, env);
       } else {
         const timestamp = Date.now();
         const score = user.score;
@@ -130,7 +130,7 @@ export async function processAnswer(callbackQuery) {
         const quizName = quizNames[quizId] || quizId;
         const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})\nТема: ${quizName}\nРезультат: ${score} из ${total}\nДата и время: ${new Date(timestamp).toISOString()}`;
         await sendMessage('-1002831579277', messageText);
-        await saveQuizResult(userId, quizId, user, timestamp);
+        await saveQuizResult(userId, quizId, user, timestamp, env);
         const keyboard = {
           inline_keyboard: [
             [{ text: "Попробовать снова?", callback_data: "restart_quiz" }]
@@ -146,8 +146,8 @@ export async function processAnswer(callbackQuery) {
   return new Response('OK', { status: 200 });
 }
 
-async function sendQuestion(chatId, user, quizId) {
-  const quizzes = await loadQuizData();
+async function sendQuestion(chatId, user, quizId, env) {
+  const quizzes = await loadQuizData(env);
   const currentQuestion = user.currentQuestion;
   const questionData = quizzes[quizId]?.[currentQuestion];
   if (!questionData) {
@@ -174,7 +174,7 @@ async function sendQuestion(chatId, user, quizId) {
   }
 }
 
-async function saveQuizResult(userId, quizId, user, timestamp) {
+async function saveQuizResult(userId, quizId, user, timestamp, env) {
   const kvKey = `${userId}_${timestamp}`;
   const result = {
     telegramId: userId,
@@ -184,11 +184,11 @@ async function saveQuizResult(userId, quizId, user, timestamp) {
     quizId: quizId,
     answers: user.answers,
     score: user.score,
-    totalQuestions: (await loadQuizData())[quizId].length,
+    totalQuestions: (await loadQuizData(env))[quizId].length,
     timestamp: new Date(timestamp).toISOString()
   };
   try {
-    await kv_quiz.put(kvKey, JSON.stringify(result));
+    await env.kv_quiz.put(kvKey, JSON.stringify(result));
   } catch (error) {
     console.log('Error saving to KV:', error.message);
   }

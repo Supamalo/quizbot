@@ -4,7 +4,7 @@ export async function loadQuizData() {
     const quizFiles = ['breakfast.json', 'salads.json'];
 
     for (const file of quizFiles) {
-      const response = await fetch(`https://quizkk.stanly549.workers.dev/quizzes/${file}`);
+      const response = await env.ASSETS.fetch(`quizzes/${file}`);
       if (!response.ok) {
         console.log(`Error loading quiz data for ${file}:`, await response.text());
         continue;
