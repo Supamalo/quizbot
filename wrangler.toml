@@ -10,5 +10,9 @@ id = "ce68783714d2458cb11e8817cc2d3449"
 binding = "kv_results"
 id = "b64b10c45bf3400a8b808adb0fe2b02d"
 
+[logs]
+level = "info"
+enabled = true
+
 [observability.logs]
 enabled = true
