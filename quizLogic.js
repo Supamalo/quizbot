@@ -56,16 +56,20 @@ export async function processAnswer(callbackQuery, env) {
   if (data.startsWith("quiz_")) {
     const quizId = data.replace("quiz_", "");
     const quizzes = await loadQuizData(env);
-    console.log('processAnswer: loaded quizzes:', quizzes); // Для отладки
     if (!quizzes[quizId]) {
       await sendMessage(chatId, "Ошибка: выбранная тема квиза недоступна. " + JSON.stringify(quizzes));
       await answerCallback(callbackId);
       return new Response('OK', { status: 200 });
     }
+    const now = Date.now();
     userData.set(userId, {
       quizId,
       state: 'awaiting_name',
-      username: callbackQuery.from.username || ''
+      username: callbackQuery.from.username || '',
+      currentQuestion: 0,
+      score: 0,
+      answers: [],
+      quizStartedAt: now // сохраняем время начала квиза
     });
     await sendMessage(chatId, "Пожалуйста, укажите ваше имя и фамилию через пробел (например: Иван Иванов).");
     await answerCallback(callbackId);
@@ -89,7 +93,13 @@ export async function processAnswer(callbackQuery, env) {
       const total = quizzes[quizId].length;
       const quizNames = await loadQuizNames();
       const quizName = quizNames[quizId] || quizId;
-      const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})\nТема: ${quizName}\nРезультат: ${score} из ${total}\nДата и время: ${new Date(timestamp).toISOString()}`;
+      const startedAt = user.quizStartedAt ? new Date(user.quizStartedAt).toISOString() : '';
+      const finishedAt = new Date(timestamp).toISOString();
+      const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})
+Тема: ${quizName}
+Результат: ${score} из ${total}
+Время начала: ${startedAt}
+Время окончания: ${finishedAt}`;
       await sendMessage('-1002831579277', messageText);
       await saveQuizResult(userId, quizId, user, timestamp, env);
       const keyboard = {
@@ -130,7 +140,13 @@ export async function processAnswer(callbackQuery, env) {
         const total = quizzes[quizId].length;
         const quizNames = await loadQuizNames();
         const quizName = quizNames[quizId] || quizId;
-        const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})\nТема: ${quizName}\nРезультат: ${score} из ${total}\nДата и время: ${new Date(timestamp).toISOString()}`;
+        const startedAt = user.quizStartedAt ? new Date(user.quizStartedAt).toISOString() : '';
+        const finishedAt = new Date(timestamp).toISOString();
+        const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})
+Тема: ${quizName}
+Результат: ${score} из ${total}
+Время начала: ${startedAt}
+Время окончания: ${finishedAt}`;
         await sendMessage('-1002831579277', messageText);
         await saveQuizResult(userId, quizId, user, timestamp, env);
         const keyboard = {
@@ -187,10 +203,13 @@ async function saveQuizResult(userId, quizId, user, timestamp, env) {
     answers: user.answers,
     score: user.score,
     totalQuestions: (await loadQuizData(env))[quizId].length,
+    quizStartedAt: user.quizStartedAt ? new Date(user.quizStartedAt).toISOString() : null,
+    finishedAt: new Date(timestamp).toISOString(),
+    durationMs: user.quizStartedAt ? (timestamp - user.quizStartedAt) : null,
     timestamp: new Date(timestamp).toISOString()
   };
   try {
-    await env.kv_results.put(kvKey, JSON.stringify(result)); // изменено на kv_results
+    await env.kv_results.put(kvKey, JSON.stringify(result));
   } catch (error) {
     console.log('Error saving to KV:', error.message);
   }
