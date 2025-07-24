@@ -1,6 +1,9 @@
 import { sendMessage, sendPhoto, answerCallback } from './telegramApi.js';
 import { loadQuizData, loadQuizNames } from './dataLoader.js';
-import { userData } from './main.js'; // добавлено
+import { userData } from './main.js';
+
+// Таймеры для каждого пользователя
+const questionTimers = new Map();
 
 export async function startQuiz(chatId, env) {
   const quizNames = await loadQuizNames();
@@ -9,7 +12,7 @@ export async function startQuiz(chatId, env) {
       { text: quizNames[quizId], callback_data: `quiz_${quizId}` }
     ])
   };
-  await sendMessage(chatId, "Добро пожаловать! Выберите тему квиза:", keyboard);
+  await sendMessage(chatId, "Выбери тему квиза, которую хочешь пройти. У тебя будет 1 минута на каждый ответ", keyboard);
   return new Response('OK', { status: 200 });
 }
 
@@ -37,7 +40,8 @@ export async function processNameInput(message, env) {
     state: 'quiz_started',
     currentQuestion: 0,
     score: 0,
-    answers: []
+    answers: [],
+    timerActive: false // для контроля таймера
   });
   await sendQuestion(chatId, userData.get(userId), user.quizId, env);
   return new Response('OK', { status: 200 });
@@ -46,6 +50,13 @@ export async function processNameInput(message, env) {
 export async function processAnswer(callbackQuery, env) {
   const { id: callbackId, from: { id: userId }, data, message } = callbackQuery;
   const chatId = message.chat.id;
+
+  // Сбросить таймер при ответе
+  if (questionTimers.has(userId)) {
+    clearTimeout(questionTimers.get(userId).timeout);
+    clearTimeout(questionTimers.get(userId).reminder);
+    questionTimers.delete(userId);
+  }
 
   if (data === "restart_quiz") {
     await startQuiz(chatId, env);
@@ -148,6 +159,49 @@ export async function processAnswer(callbackQuery, env) {
   return new Response('OK', { status: 200 });
 }
 
+// Вспомогательная функция для завершения квиза по таймауту
+async function finishQuizTimeout(userId, chatId, env, reason = "timeout") {
+  const user = userData.get(userId);
+  if (!user || user.state !== 'quiz_started') return;
+  const quizzes = await loadQuizData(env);
+  const quizId = user.quizId;
+  const total = quizzes[quizId].length;
+  const timestamp = Date.now();
+  const quizNames = await loadQuizNames();
+  const quizName = quizNames[quizId] || quizId;
+
+  // Заполнить null для неотвеченных вопросов
+  const answers = [...user.answers];
+  for (let i = user.currentQuestion; i < total; i++) {
+    answers.push({
+      questionIndex: i,
+      selectedAnswerIndex: null,
+      correctAnswerIndex: quizzes[quizId][i].correct,
+      isCorrect: false
+    });
+  }
+  const score = user.score;
+  const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})
+Тема: ${quizName}
+Результат: ${score} из ${total}
+Дата и время: ${new Date(timestamp).toISOString()}
+${reason === "timeout" ? "Превышено ожидание" : ""}`;
+  await sendMessage('-1002831579277', messageText);
+  await saveQuizResult(userId, quizId, { ...user, answers, score }, timestamp, env);
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: "Попробовать снова?", callback_data: "restart_quiz" }]
+    ]
+  };
+  await sendMessage(chatId, `Квиз завершен! Ваш результат: ${score}/${total}${reason === "timeout" ? "\nВремя на ответ истекло." : ""}`, keyboard);
+  userData.delete(userId);
+  if (questionTimers.has(userId)) {
+    clearTimeout(questionTimers.get(userId).timeout);
+    clearTimeout(questionTimers.get(userId).reminder);
+    questionTimers.delete(userId);
+  }
+}
+
 async function sendQuestion(chatId, user, quizId, env) {
   const quizzes = await loadQuizData(env);
   const currentQuestion = user.currentQuestion;
@@ -173,6 +227,20 @@ async function sendQuestion(chatId, user, quizId, env) {
     await sendPhoto(chatId, questionData.image, messageText, keyboard);
   } else {
     await sendMessage(chatId, messageText, keyboard);
+  }
+
+  // Запустить таймеры только если не активны
+  if (!user.timerActive) {
+    user.timerActive = true;
+    // Напоминание через 30 секунд
+    const reminder = setTimeout(async () => {
+      await sendMessage(chatId, "Осталось 30 секунд на ответ!");
+    }, 30000);
+    // Завершение квиза через 60 секунд
+    const timeout = setTimeout(async () => {
+      await finishQuizTimeout(user.telegramId || user.id || chatId, chatId, env, "timeout");
+    }, 60000);
+    questionTimers.set(user.telegramId || user.id || chatId, { timeout, reminder });
   }
 }
 
