@@ -2,9 +2,9 @@ export async function loadQuizData() {
   try {
     const quizzes = {};
     const quizFiles = ['breakfast.json', 'salads.json'];
-    
+
     for (const file of quizFiles) {
-      const response = await fetch(`/quizzes/${file}`);
+      const response = await fetch(`https://quizkk.stanly549.workers.dev/quizzes/${file}`);
       if (!response.ok) {
         console.log(`Error loading quiz data for ${file}:`, await response.text());
         continue;
@@ -13,7 +13,6 @@ export async function loadQuizData() {
       const quizId = file.replace('.json', '');
       quizzes[quizId] = data;
     }
-    
     return quizzes;
   } catch (error) {
     console.log('Fetch error in loadQuizData:', error.message);
