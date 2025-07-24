@@ -118,7 +118,8 @@ export async function processAnswer(callbackQuery, env) {
         await sendMessage(chatId, "Правильно!");
       } else {
         const correctOption = questionData.options[questionData.correct];
-        await sendMessage(chatId, `Неправильно! Правильный ответ: ${correctOption}`);
+        //await sendMessage(chatId, `Неправильно! Правильный ответ: ${correctOption}`);
+        await sendMessage(chatId, `Неправильно!`);
       }
       user.currentQuestion += 1;
       if (user.currentQuestion < quizzes[quizId].length) {
