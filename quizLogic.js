@@ -156,7 +156,7 @@ ${durationStr}`;
 Результат: ${score} из ${total}
 Время начала: ${startedAt}
 Время окончания: ${finishedAt}
-Длительность: ${durationStr}`;
+${durationStr}`;
         await sendMessage('-1002831579277', messageText);
         await saveQuizResult(userId, quizId, user, timestamp, env);
         const keyboard = {
