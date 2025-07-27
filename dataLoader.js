@@ -1,7 +1,14 @@
 export async function loadQuizData(env) {
   try {
     const quizzes = {};
-    const quizFiles = ['breakfast.json', 'salads.json', 'soups.json', 'hot.json']; // добавлен hot.json
+    const quizFiles = [
+      'breakfast.json',
+      'salads.json',
+      'soups.json',
+      'hot.json',
+      'kids.json',
+      'bread.json' // добавлен bread.json
+    ];
 
     for (const file of quizFiles) {
       try {
@@ -29,6 +36,8 @@ export async function loadQuizNames() {
     breakfast: "Завтраки",
     salads: "Салаты и закуски",
     soups: "Супы",
-    hot: "Пасты и горячие блюда" // добавлено
+    hot: "Пасты и горячие блюда",
+    kids: "Детское меню",
+    bread: "Хлеб" // добавлено
   };
 }

@@ -93,13 +93,18 @@ export async function processAnswer(callbackQuery, env) {
       const total = quizzes[quizId].length;
       const quizNames = await loadQuizNames();
       const quizName = quizNames[quizId] || quizId;
-      const startedAt = user.quizStartedAt ? new Date(user.quizStartedAt).toISOString() : '';
-      const finishedAt = new Date(timestamp).toISOString();
+      const startedAt = user.quizStartedAt ? new Date(user.quizStartedAt).toISOString().replace(/\.\d{3}Z$/, 'Z') : '';
+      const finishedAt = new Date(timestamp).toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const durationMs = user.quizStartedAt ? (timestamp - user.quizStartedAt) : null;
+      const durationStr = durationMs !== null
+        ? `Длительность: ${Math.floor(durationMs / 1000)} сек.`
+        : '';
       const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})
 Тема: ${quizName}
 Результат: ${score} из ${total}
 Время начала: ${startedAt}
-Время окончания: ${finishedAt}`;
+Время окончания: ${finishedAt}
+${durationStr}`;
       await sendMessage('-1002831579277', messageText);
       await saveQuizResult(userId, quizId, user, timestamp, env);
       const keyboard = {
@@ -140,13 +145,18 @@ export async function processAnswer(callbackQuery, env) {
         const total = quizzes[quizId].length;
         const quizNames = await loadQuizNames();
         const quizName = quizNames[quizId] || quizId;
-        const startedAt = user.quizStartedAt ? new Date(user.quizStartedAt).toISOString() : '';
-        const finishedAt = new Date(timestamp).toISOString();
+        const startedAt = user.quizStartedAt ? new Date(user.quizStartedAt).toISOString().replace(/\.\d{3}Z$/, 'Z') : '';
+        const finishedAt = new Date(timestamp).toISOString().replace(/\.\d{3}Z$/, 'Z');
+        const durationMs = user.quizStartedAt ? (timestamp - user.quizStartedAt) : null;
+        const durationStr = durationMs !== null
+          ? `Длительность: ${Math.floor(durationMs / 1000)} сек.`
+          : '';
         const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})
 Тема: ${quizName}
 Результат: ${score} из ${total}
 Время начала: ${startedAt}
-Время окончания: ${finishedAt}`;
+Время окончания: ${finishedAt}
+Длительность: ${durationStr}`;
         await sendMessage('-1002831579277', messageText);
         await saveQuizResult(userId, quizId, user, timestamp, env);
         const keyboard = {
@@ -194,6 +204,7 @@ async function sendQuestion(chatId, user, quizId, env) {
 
 async function saveQuizResult(userId, quizId, user, timestamp, env) {
   const kvKey = `${userId}_${timestamp}`;
+  const durationMs = user.quizStartedAt ? (timestamp - user.quizStartedAt) : null;
   const result = {
     telegramId: userId,
     username: user.username || 'Unknown',
@@ -203,10 +214,10 @@ async function saveQuizResult(userId, quizId, user, timestamp, env) {
     answers: user.answers,
     score: user.score,
     totalQuestions: (await loadQuizData(env))[quizId].length,
-    quizStartedAt: user.quizStartedAt ? new Date(user.quizStartedAt).toISOString() : null,
-    finishedAt: new Date(timestamp).toISOString(),
-    durationMs: user.quizStartedAt ? (timestamp - user.quizStartedAt) : null,
-    timestamp: new Date(timestamp).toISOString()
+    quizStartedAt: user.quizStartedAt ? new Date(user.quizStartedAt).toISOString().replace(/\.\d{3}Z$/, 'Z') : null,
+    finishedAt: new Date(timestamp).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    durationMs,
+    timestamp: new Date(timestamp).toISOString().replace(/\.\d{3}Z$/, 'Z')
   };
   try {
     await env.kv_results.put(kvKey, JSON.stringify(result));
