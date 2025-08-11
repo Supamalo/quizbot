@@ -152,7 +152,7 @@ ${durationStr}`;
         const durationStr = durationMs !== null
           ? `Длительность: ${Math.floor(durationMs / 1000)} сек.`
           : '';
-        const messageText = `Квиз пройден: ${user.firstName} ${user.lastName} (@${user.username || 'Unknown'})
+        const messageText = `Квиз пройден: ${user.firstName} ${user.lastName}${user.username ? ` (@${user.username})` : ''}
 Тема: ${quizName}
 Результат: ${score} из ${total}
 Время начала: ${startedAt}
